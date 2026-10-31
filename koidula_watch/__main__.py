@@ -239,6 +239,21 @@ def cmd_notify(config: Config, args) -> int:
     return 0
 
 
+def cmd_test_call(config: Config, args) -> int:
+    from . import caller
+    setup_logging(config, to_file=False)
+    users = caller.recipients()
+    if not users:
+        print("CALLMEBOT_USERS не задан.")
+        return 2
+    results = caller.call_all("Тест. Это проверочный звонок монитора Койдула. Мест пока нет.", wait=True)
+    ok = sum(1 for _, good, _ in results if good)
+    for i, (_, good, body) in enumerate(results, 1):
+        print(f"Получатель #{i}: {'OK' if good else 'ОШИБКА'} — {body[:200]}")
+    print(f"Итого: {ok} из {len(results)}")
+    return 0 if ok == len(results) else 1
+
+
 def cmd_healthcheck(config: Config, args) -> int:
     path = config.data_dir / "health.json"
     try:
@@ -268,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
     notify = sub.add_parser("notify", help="отправить сообщение в Telegram")
     notify.add_argument("text")
     notify.add_argument("--mark-failed", action="store_true")
+    sub.add_parser("test-call", help="тестовый звонок через CallMeBot")
     sub.add_parser("healthcheck", help="код 0, если цикл жив (для Docker HEALTHCHECK)")
 
     args = parser.parse_args(argv)
@@ -280,7 +296,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     handlers = {"run": cmd_run, "check-once": cmd_check_once, "test-telegram": cmd_test_telegram,
                 "simulate": cmd_simulate, "get-chat-id": cmd_get_chat_id, "healthcheck": cmd_healthcheck,
-                "notify": cmd_notify}
+                "notify": cmd_notify, "test-call": cmd_test_call}
     try:
         return handlers[args.command](config, args)
     except ConfigError as exc:

@@ -9,6 +9,7 @@ on:
         options:
           - check-once
           - test-telegram
+          - test-call
           - simulate-free
           - simulate-full
           - tests
@@ -26,6 +27,7 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       TELEGRAM_EXTRA_CHAT_IDS: ${{ secrets.TELEGRAM_EXTRA_CHAT_IDS }}
+      CALLMEBOT_USERS: ${{ secrets.CALLMEBOT_USERS }}
       TARGET_DATE: "2026-12-20"
       BORDER_POINT: koidula
       VEHICLE_CATEGORY: B
@@ -43,6 +45,7 @@ jobs:
           case "${{ inputs.command }}" in
             check-once)     python -m koidula_watch check-once ;;
             test-telegram)  python -m koidula_watch test-telegram ;;
+            test-call)      python -m koidula_watch test-call ;;
             simulate-free)  python -m koidula_watch simulate free ;;
             simulate-full)  python -m koidula_watch simulate full ;;
             tests)          python -m pytest -q ;;

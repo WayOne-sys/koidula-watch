@@ -14,6 +14,7 @@ import requests
 
 from .config import Config
 from .goswift import DayResult, DayStatus, GoSwiftError, RateLimitedError, TargetDateMissingError
+from . import caller
 from .notifier import NotifyError, esc
 from .state import CheckJournal, State, StateStore
 
@@ -244,6 +245,9 @@ class Monitor:
                 f"Продолжаю проверять: места могут появиться после отмен.\nВремя: {self._stamp(now)}"
             ):
                 self.state.opened_full_notified = True
+                if not self.label:
+                    caller.call_all("Койдула. Бронирование на двадцатое декабря открылось, но все места заняты. "
+                                    "Монитор продолжает проверять.")
         if result.status == DayStatus.UNCLEAR:
             if not self.state.unclear_notified and self._send(
                 f"⚠️ <b>Непонятное состояние слотов на {self._target}</b>\n"
@@ -292,6 +296,9 @@ class Monitor:
             for hour in free:
                 self.state.notified_free[hour] = now.isoformat()
             record["notified"] = True
+            if not self.label:
+                caller.call_all(f"Внимание! Койдула. Есть свободные места на двадцатое декабря. "
+                                f"Время: {', '.join(free)}. Срочно бронируйте в Гоу Свифт.")
             if self.c.stop_on_available:
                 self.state.stopped = True
                 self.state.stop_reason = f"найдены свободные слоты {', '.join(free)} ({now:%d.%m %H:%M})"
