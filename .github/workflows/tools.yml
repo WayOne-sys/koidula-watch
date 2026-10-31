@@ -1,0 +1,46 @@
+name: tools
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Что выполнить"
+        type: choice
+        options:
+          - check-once
+          - test-telegram
+          - simulate-free
+          - simulate-full
+          - tests
+        default: check-once
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATA_DIR: data-tools
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TARGET_DATE: "2026-12-20"
+      BORDER_POINT: koidula
+      VEHICLE_CATEGORY: B
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Run
+        run: |
+          case "${{ inputs.command }}" in
+            check-once)     python -m koidula_watch check-once ;;
+            test-telegram)  python -m koidula_watch test-telegram ;;
+            simulate-free)  python -m koidula_watch simulate free ;;
+            simulate-full)  python -m koidula_watch simulate full ;;
+            tests)          python -m pytest -q ;;
+          esac

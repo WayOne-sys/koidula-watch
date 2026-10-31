@@ -1,0 +1,90 @@
+name: monitor
+
+# Один длинный job (до ~5,7 ч) проверяет GoSwift по расписанию из .env-переменных ниже.
+# Перед лимитом GitHub (6 ч) job сохраняет состояние в кэш и сам запускает следующий.
+# Резервный cron раз в 30 мин перезапускает цепочку, если она прервалась.
+# Остановить вручную: Actions → monitor → «…» → Disable workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      reset_state:
+        description: "Начать с чистого состояния (сбросить дедупликацию и флаг остановки)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17,47 * * * *"
+
+concurrency:
+  group: koidula-monitor
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      DATA_DIR: data
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TARGET_DATE: "2026-12-20"
+      BORDER_POINT: koidula
+      VEHICLE_CATEGORY: B
+      TZ_NAME: Europe/Tallinn
+      MONITOR_START: "2026-10-31T23:00"
+      MONITOR_STOP: "2026-12-20T19:00"
+      # 23:00–00:00 каждые 15 мин; 00:00–00:30 каждую минуту; далее каждые 5 мин
+      INTENSIVE_WINDOWS: "2026-10-31T23:00/2026-11-01T00:00@900,2026-11-01T00:00/2026-11-01T00:30@60"
+      CHECK_INTERVAL_SECONDS: "300"
+      STOP_ON_AVAILABLE: "true"
+      NOTIFY_OPENED_FULL: "true"
+      ERROR_ALERT_THRESHOLD: "3"
+      MAX_RUNTIME_MINUTES: "335"
+      EXIT_WHEN_DONE: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore state
+        if: ${{ !inputs.reset_state }}
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: koidula-state-${{ github.run_id }}
+          restore-keys: koidula-state-
+
+      - name: Run monitor
+        run: python -m koidula_watch run
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: koidula-state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Chain next run or disable after stop
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stopped=$(python -c "import json;print(json.load(open('data/state.json')).get('stopped', False))" 2>/dev/null || echo False)
+          if [ "$stopped" = "True" ]; then
+            echo "Мониторинг остановлен — отключаю workflow."
+            gh workflow disable monitor.yml --repo "$GITHUB_REPOSITORY"
+          elif [ "${{ job.status }}" = "success" ]; then
+            echo "Запускаю следующий сеанс."
+            gh workflow run monitor.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
+          else
+            echo "Сеанс завершился с ошибкой — продолжит резервный cron (до 30 мин)."
+          fi

@@ -1,0 +1,14 @@
+services:
+  koidula-watch:
+    build: .
+    image: koidula-watch:latest
+    container_name: koidula-watch
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
