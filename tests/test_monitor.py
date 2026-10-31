@@ -276,3 +276,16 @@ def test_status_shows_errors(tmp_path):
 
     run(cfg, clock, Fail(), notes)
     assert "🟠" in notes.edits[-1][1]
+
+
+def test_multi_notifier_status_only_primary(tmp_path):
+    from koidula_watch.notifier import MultiNotifier
+    cfg = cfg_gh(tmp_path, MAX_RUNTIME_MINUTES="2")
+    primary, wife = EditNotes(), EditNotes()
+    multi = MultiNotifier(primary, [wife])
+    clock = Clock(cfg, "2026-11-01T00:00:00")
+    run(cfg, clock, Endless(lambda: "free"), multi)
+    assert any("Есть свободные слоты" in t for t in wife.sent)
+    assert any("Есть свободные слоты" in t for t in primary.sent)
+    assert not any("Статус монитора" in t for t in wife.sent)
+    assert any("Статус монитора" in t for t in primary.sent)

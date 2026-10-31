@@ -109,6 +109,38 @@ class TelegramNotifier:
         return response.json().get("result", {})
 
 
+class MultiNotifier:
+    """Основной чат + дополнительные получатели.
+
+    Уведомления (send) уходят всем; закреплённый статус (edit/pin) — только в основной чат.
+    Сбой доставки дополнительному получателю не считается сбоем уведомления.
+    """
+
+    def __init__(self, primary: TelegramNotifier, extras: list[TelegramNotifier]):
+        self.primary, self.extras = primary, extras
+
+    def send(self, text: str, attempts: int = 3) -> int | None:
+        message_id = self.primary.send(text, attempts)
+        for extra in self.extras:
+            try:
+                extra.send(text, attempts)
+            except NotifyError as exc:
+                log.warning("Доп. получатель: %s", exc)
+        return message_id
+
+    def send_primary(self, text: str) -> int | None:
+        return self.primary.send(text)
+
+    def edit(self, message_id: int, text: str) -> None:
+        self.primary.edit(message_id, text)
+
+    def pin(self, message_id: int) -> None:
+        self.primary.pin(message_id)
+
+    def get_me(self) -> dict:
+        return self.primary.get_me()
+
+
 class ConsoleNotifier:
     """Печатает сообщения в консоль (для check-once и сухих прогонов)."""
 

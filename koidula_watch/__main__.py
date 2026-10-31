@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import logging
 import logging.handlers
@@ -14,7 +15,7 @@ from .config import Config, ConfigError, load_config
 from .fixtures import scenario_html
 from .goswift import DayResult, GoSwiftClient, GoSwiftError, evaluate_day, parse_slots
 from .monitor import Monitor
-from .notifier import ConsoleNotifier, NotifyError, TelegramNotifier
+from .notifier import ConsoleNotifier, MultiNotifier, NotifyError, TelegramNotifier
 from .state import CheckJournal, StateStore
 
 log = logging.getLogger("koidula_watch")
@@ -71,6 +72,8 @@ def resolve_chat_id(config: Config) -> str:
         for u in updates
         if (m := u.get("message")) and m.get("chat", {}).get("type") == "private"
     }
+    extras = {x.strip() for x in os.environ.get("TELEGRAM_EXTRA_CHAT_IDS", "").replace(";", ",").split(",")}
+    private -= extras
     if len(private) != 1:
         raise ConfigError(
             "TELEGRAM_CHAT_ID не задан, и определить его автоматически не удалось "
@@ -84,10 +87,17 @@ def resolve_chat_id(config: Config) -> str:
     return chat_id
 
 
-def make_telegram(config: Config) -> TelegramNotifier:
+def make_telegram(config: Config):
     if not config.telegram_bot_token:
         config.require_telegram()
-    return TelegramNotifier(config.telegram_bot_token, resolve_chat_id(config))
+    primary_id = resolve_chat_id(config)
+    primary = TelegramNotifier(config.telegram_bot_token, primary_id)
+    extra_ids = [x.strip() for x in os.environ.get("TELEGRAM_EXTRA_CHAT_IDS", "").replace(";", ",").split(",")
+                 if x.strip() and x.strip() != primary_id]
+    if not extra_ids:
+        return primary
+    log.info("Дополнительных получателей: %d", len(extra_ids))
+    return MultiNotifier(primary, [TelegramNotifier(config.telegram_bot_token, x) for x in extra_ids])
 
 
 def describe(result: DayResult) -> str:

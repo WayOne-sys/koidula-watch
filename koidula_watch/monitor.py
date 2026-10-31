@@ -158,7 +158,8 @@ class Monitor:
         except NotifyError as exc:
             log.warning("Статус: не удалось отредактировать (%s) — создаю новое сообщение", exc)
         try:
-            message_id = notifier.send(text)
+            sender = getattr(notifier, "send_primary", notifier.send)
+            message_id = sender(text)
             if message_id:
                 self.state.status_message_id = int(message_id)
                 try:

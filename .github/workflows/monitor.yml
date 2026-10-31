@@ -31,6 +31,7 @@ jobs:
       DATA_DIR: data
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      TELEGRAM_EXTRA_CHAT_IDS: ${{ secrets.TELEGRAM_EXTRA_CHAT_IDS }}
       TARGET_DATE: "2026-12-20"
       BORDER_POINT: koidula
       VEHICLE_CATEGORY: B
