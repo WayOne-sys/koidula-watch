@@ -16,7 +16,7 @@ import requests
 
 log = logging.getLogger(__name__)
 
-API = "http://api.callmebot.com/start.php"
+API = "https://api.callmebot.com/start.php"
 
 
 def recipients() -> list[str]:
