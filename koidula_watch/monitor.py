@@ -20,7 +20,7 @@ from .state import CheckJournal, State, StateStore
 
 log = logging.getLogger(__name__)
 
-MAX_BACKOFF_SECONDS = 900
+MAX_BACKOFF_SECONDS = int(os.environ.get("MAX_BACKOFF_SECONDS", "900"))
 FMT = "%d.%m.%Y %H:%M:%S"
 
 

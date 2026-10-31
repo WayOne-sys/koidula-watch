@@ -45,6 +45,8 @@ jobs:
       STOP_ON_AVAILABLE: "true"
       NOTIFY_OPENED_FULL: "true"
       ERROR_ALERT_THRESHOLD: "3"
+      # при 503/429 пауза растёт 30→60→120 с и дальше не увеличивается (Retry-After сайта соблюдается)
+      MAX_BACKOFF_SECONDS: "120"
       MAX_RUNTIME_MINUTES: "335"
       EXIT_WHEN_DONE: "true"
     steps:
