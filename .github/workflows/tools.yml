@@ -37,6 +37,8 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - name: Run
         run: |
+          set -o pipefail
+          {
           case "${{ inputs.command }}" in
             check-once)     python -m koidula_watch check-once ;;
             test-telegram)  python -m koidula_watch test-telegram ;;
@@ -44,3 +46,9 @@ jobs:
             simulate-full)  python -m koidula_watch simulate full ;;
             tests)          python -m pytest -q ;;
           esac
+          } 2>&1 | tee out.txt
+      - name: Publish result as annotation
+        if: always()
+        run: |
+          body=$(grep -v -E "^\s+[0-9]{2}:00 " out.txt | tail -n 15 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+          echo "::notice title=${{ inputs.command }}::${body}"

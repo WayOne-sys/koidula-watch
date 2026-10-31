@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import time
 from datetime import datetime, timedelta
@@ -20,6 +21,12 @@ log = logging.getLogger(__name__)
 
 MAX_BACKOFF_SECONDS = 900
 FMT = "%d.%m.%Y %H:%M:%S"
+
+
+def gha_notice(text: str) -> None:
+    """Аннотация GitHub Actions (видна в интерфейсе и через API, без скачивания логов)."""
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print("::notice title=koidula::" + text.replace("%", "%25").replace("\n", "%0A"), flush=True)
 
 
 class Notifier(Protocol):
@@ -136,6 +143,8 @@ class Monitor:
         record.update(ok=False, error=f"{kind}: {exc}", consecutive_errors=n)
         log.warning("Проверка #%d неудачна (%d подряд): %s", self.state.checks_total + 1, n, exc)
 
+        if n in (1, self.c.error_alert_threshold):
+            gha_notice(f"{now:%d.%m %H:%M:%S}: ошибка #{n}: {kind}: {exc}")
         due = n >= self.c.error_alert_threshold
         if due and self.state.error_alert_active and self.state.last_error_alert_at:
             last = datetime.fromisoformat(self.state.last_error_alert_at)
@@ -161,6 +170,8 @@ class Monitor:
         self.state.error_alert_active = False
 
         free = result.free_hours
+        if result.status.value != self.state.last_status or self.state.checks_total == 0:
+            gha_notice(f"{now:%d.%m %H:%M:%S}: {self._target} -> {result.status.value} {result.counts()} free={free}")
         record.update(ok=True, status=result.status.value, counts=result.counts(), free=free)
         log.info("Проверка: %s %s → %s %s", self._target, self.c.border_point_name, result.status.value,
                  result.counts())
