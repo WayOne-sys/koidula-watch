@@ -112,6 +112,63 @@ class Monitor:
             log.error("%s", exc)
             return False
 
+    # ── закреплённое сообщение со статусом ──────────────────────────────────
+    _STATUS_RU = {
+        "not_open": "бронирование ещё не открыто",
+        "opened_full": "открыто, но все места заняты (Full)",
+        "available": "ЕСТЬ СВОБОДНЫЕ МЕСТА",
+        "unclear": "непонятное состояние — проверьте вручную",
+    }
+
+    def _status_text(self, now: datetime, phase: str, next_at: datetime | None = None) -> str:
+        st = self.state
+        if st.stopped:
+            head = f"⏹ <b>Остановлен</b>: {esc(st.stop_reason)}"
+        elif phase == "waiting":
+            head = f"⏳ <b>Ожидает старта</b> {self.c.monitor_start:%d.%m %H:%M}"
+        elif st.consecutive_errors:
+            head = f"🟠 <b>Ошибки</b>: {st.consecutive_errors} подряд (повторяю с паузой)"
+        else:
+            head = "🟢 <b>Активен</b>"
+        last = datetime.fromisoformat(st.last_check_at).strftime("%d.%m %H:%M:%S") if st.last_check_at else "—"
+        day = self._STATUS_RU.get(st.last_status, st.last_status or "ещё не проверялось")
+        if st.last_status == "available" and st.last_free:
+            day += ": " + ", ".join(st.last_free)
+        lines = [
+            "📊 <b>Статус монитора</b> (обновляется автоматически)",
+            head,
+            f"Последняя проверка: <b>{last}</b>",
+            f"{self._target} Koidula B: {esc(day)}",
+        ]
+        if next_at and not st.stopped:
+            lines.append(f"Следующая: ~{next_at:%H:%M:%S}")
+        lines.append(f"Проверок всего: {st.checks_total}")
+        lines.append("<i>Если время последней проверки отстаёт больше чем на 10–15 мин — монитор не работает.</i>")
+        return "\n".join(lines)
+
+    def update_status(self, phase: str = "active", next_at: datetime | None = None) -> None:
+        notifier = self.notifier
+        if not hasattr(notifier, "edit") or self.label:
+            return
+        text = self._status_text(self.now(), phase, next_at)
+        try:
+            if self.state.status_message_id:
+                notifier.edit(self.state.status_message_id, text)
+                return
+        except NotifyError as exc:
+            log.warning("Статус: не удалось отредактировать (%s) — создаю новое сообщение", exc)
+        try:
+            message_id = notifier.send(text)
+            if message_id:
+                self.state.status_message_id = int(message_id)
+                try:
+                    notifier.pin(message_id)
+                except NotifyError as exc:
+                    log.warning("Статус: не удалось закрепить: %s", exc)
+            self.store.save(self.state)
+        except NotifyError as exc:
+            log.warning("Статус: не удалось отправить: %s", exc)
+
     # ── одна проверка ───────────────────────────────────────────────────────
     def check_once(self) -> float:
         """Выполняет одну проверку и возвращает рекомендуемую паузу до следующей (сек)."""
@@ -309,6 +366,7 @@ class Monitor:
 
         if not ignore_start and self.schedule.phase(now) == "before":
             log.info("Ожидание начала мониторинга: %s", self.c.monitor_start.isoformat())
+            self.update_status("waiting", self.c.monitor_start)
             target = self.c.monitor_start if deadline is None else min(self.c.monitor_start, deadline)
             self._sleep_until(target)
 
@@ -320,6 +378,7 @@ class Monitor:
             self._touch_health("active")
             self.heartbeat_if_due(self.now())
             delay = self.check_once()
+            self.update_status("active", self.now() + timedelta(seconds=delay))
             if self.state.stopped:
                 log.info("Остановка: %s", self.state.stop_reason)
                 return self._finish()
@@ -330,4 +389,5 @@ class Monitor:
         self._send(f"⏹ Мониторинг завершён: наступило {self.c.monitor_stop:%d.%m.%Y %H:%M}. Проверки остановлены.")
         self.state.stopped, self.state.stop_reason = True, "истёк MONITOR_STOP"
         self.store.save(self.state)
+        self.update_status("active")
         self._finish()

@@ -27,6 +27,8 @@ class State:
     stopped: bool = False
     stop_reason: str = ""
     started_notified: bool = False
+    status_message_id: int = 0
+    status_failures: int = 0
 
 
 class StateStore:

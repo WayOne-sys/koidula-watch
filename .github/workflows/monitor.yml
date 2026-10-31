@@ -66,6 +66,13 @@ jobs:
       - name: Run monitor
         run: python -m koidula_watch run
 
+      - name: Report failure to Telegram
+        if: failure()
+        run: >
+          python -m koidula_watch notify --mark-failed
+          "🔴 <b>Сбой монитора</b>: сеанс на GitHub завершился с ошибкой. Проверки временно не идут; резервный перезапуск — в течение 30 мин. Если статус не станет 🟢 — напишите Claude."
+          || true
+
       - name: Save state
         if: always()
         uses: actions/cache/save@v4

@@ -234,3 +234,45 @@ def test_full_night_timeline(tmp_path):
     found = next(t for t, r in zip(times, recs) if r.get("status") == "available")
     assert (found - opened).total_seconds() <= 65
     assert m.state.stopped
+
+
+class EditNotes(Notes):
+    def __init__(self):
+        super().__init__()
+        self.edits, self.pins = [], []
+
+    def send(self, text, attempts=3):
+        self.sent.append(text)
+        return len(self.sent)
+
+    def edit(self, mid, text):
+        self.edits.append((mid, text))
+
+    def pin(self, mid):
+        self.pins.append(mid)
+
+
+def test_live_status_message_created_once_then_edited(tmp_path):
+    cfg = cfg_gh(tmp_path, MAX_RUNTIME_MINUTES="5")
+    clock, notes = Clock(cfg, "2026-11-01T00:00:00"), EditNotes()
+    m = run(cfg, clock, Endless(lambda: "not_open"), notes)
+    status_msgs = [t for t in notes.sent if "Статус монитора" in t]
+    assert len(status_msgs) == 1 and len(notes.pins) == 1
+    assert len(notes.edits) >= 3                       # ~5 проверок за 5 мин по 60 с
+    last = notes.edits[-1][1]
+    assert "🟢" in last and "ещё не открыто" in last and "Последняя проверка" in last
+    # новый сеанс продолжает редактировать то же сообщение
+    run(cfg, clock, Endless(lambda: "not_open"), notes)
+    assert len([t for t in notes.sent if "Статус монитора" in t]) == 1
+
+
+def test_status_shows_errors(tmp_path):
+    cfg = cfg_gh(tmp_path, MAX_RUNTIME_MINUTES="2")
+    clock, notes = Clock(cfg, "2026-11-01T00:00:00"), EditNotes()
+
+    class Fail:
+        def check_day(self, t):
+            raise GoSwiftError("boom")
+
+    run(cfg, clock, Fail(), notes)
+    assert "🟠" in notes.edits[-1][1]

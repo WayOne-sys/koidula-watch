@@ -211,6 +211,24 @@ def cmd_get_chat_id(config: Config, args) -> int:
     return 0
 
 
+def cmd_notify(config: Config, args) -> int:
+    """Отправить произвольное сообщение и пометить статус как сбой (используется workflow при падении)."""
+    setup_logging(config, to_file=False)
+    notifier = make_telegram(config)
+    notifier.send(args.text)
+    store = StateStore(config.data_dir / "state.json")
+    state = store.load()
+    if state.status_message_id and args.mark_failed:
+        try:
+            notifier.edit(state.status_message_id,
+                          "📊 <b>Статус монитора</b>\n🔴 <b>СБОЙ</b>: сеанс на GitHub завершился с ошибкой.\n"
+                          f"Последняя проверка: {state.last_check_at or '—'}\n"
+                          "Резервный перезапуск — в течение 30 мин; после него статус снова станет 🟢.")
+        except NotifyError:
+            pass
+    return 0
+
+
 def cmd_healthcheck(config: Config, args) -> int:
     path = config.data_dir / "health.json"
     try:
@@ -237,6 +255,9 @@ def main(argv: list[str] | None = None) -> int:
     sim.add_argument("--dry", action="store_true", help="печатать сообщения, а не отправлять в Telegram")
 
     sub.add_parser("get-chat-id", help="показать chat_id из последних сообщений боту")
+    notify = sub.add_parser("notify", help="отправить сообщение в Telegram")
+    notify.add_argument("text")
+    notify.add_argument("--mark-failed", action="store_true")
     sub.add_parser("healthcheck", help="код 0, если цикл жив (для Docker HEALTHCHECK)")
 
     args = parser.parse_args(argv)
@@ -248,7 +269,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Ошибка конфигурации: {exc}", file=sys.stderr)
         return 2
     handlers = {"run": cmd_run, "check-once": cmd_check_once, "test-telegram": cmd_test_telegram,
-                "simulate": cmd_simulate, "get-chat-id": cmd_get_chat_id, "healthcheck": cmd_healthcheck}
+                "simulate": cmd_simulate, "get-chat-id": cmd_get_chat_id, "healthcheck": cmd_healthcheck,
+                "notify": cmd_notify}
     try:
         return handlers[args.command](config, args)
     except ConfigError as exc:

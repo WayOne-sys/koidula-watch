@@ -32,8 +32,8 @@ class TelegramNotifier:
     def _redact(self, text: str) -> str:
         return text.replace(self._token, "<TOKEN>") if self._token else text
 
-    def send(self, text: str, attempts: int = 3) -> None:
-        """Отправляет HTML-сообщение. Повторяет при сетевых ошибках и 429."""
+    def send(self, text: str, attempts: int = 3) -> int | None:
+        """Отправляет HTML-сообщение и возвращает message_id. Повторяет при сетевых ошибках и 429."""
         last_error = ""
         for attempt in range(1, attempts + 1):
             try:
@@ -49,7 +49,10 @@ class TelegramNotifier:
                 time.sleep(min(2 ** attempt, 10))
                 continue
             if response.status_code == 200:
-                return
+                try:
+                    return response.json().get("result", {}).get("message_id")
+                except ValueError:
+                    return None
             try:
                 payload = response.json()
             except ValueError:
@@ -65,6 +68,33 @@ class TelegramNotifier:
                 break  # повтор не поможет: неверный токен/chat_id или бот заблокирован
             time.sleep(min(2 ** attempt, 10))
         raise NotifyError(f"Не удалось отправить сообщение в Telegram: {last_error}")
+
+    def _call(self, method: str, payload: dict) -> dict:
+        try:
+            response = self._http.post(self._api(method), json=payload, timeout=self.timeout)
+        except requests.RequestException as exc:
+            raise NotifyError(f"{method}: {self._redact(str(exc))}") from exc
+        try:
+            data = response.json()
+        except ValueError:
+            data = {"description": response.text[:200]}
+        if response.status_code != 200:
+            raise NotifyError(f"{method}: HTTP {response.status_code}: {data.get('description')}")
+        return data
+
+    def edit(self, message_id: int, text: str) -> None:
+        """Тихо редактирует сообщение. «message is not modified» — не ошибка."""
+        try:
+            self._call("editMessageText", {"chat_id": self.chat_id, "message_id": message_id, "text": text,
+                                           "parse_mode": "HTML", "disable_web_page_preview": True})
+        except NotifyError as exc:
+            if "not modified" in str(exc):
+                return
+            raise
+
+    def pin(self, message_id: int) -> None:
+        self._call("pinChatMessage", {"chat_id": self.chat_id, "message_id": message_id,
+                                      "disable_notification": True})
 
     def get_updates(self) -> list[dict]:
         response = self._http.get(self._api("getUpdates"), timeout=self.timeout)
@@ -85,6 +115,7 @@ class ConsoleNotifier:
     def __init__(self) -> None:
         self.sent: list[str] = []
 
-    def send(self, text: str, attempts: int = 1) -> None:
+    def send(self, text: str, attempts: int = 1) -> int:
         self.sent.append(text)
         print("── сообщение (не отправлено в Telegram) ──\n" + text + "\n──")
+        return len(self.sent)
