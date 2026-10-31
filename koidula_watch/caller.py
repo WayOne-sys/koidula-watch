@@ -20,6 +20,9 @@ API = "https://api.callmebot.com/start.php"
 
 
 def recipients() -> list[str]:
+    # Отключено по умолчанию: 31.10.2026 сервис потребовал платный контакт через канал (650 звёзд).
+    if os.environ.get("CALLMEBOT_ENABLED", "false").lower() not in {"1", "true", "yes"}:
+        return []
     raw = os.environ.get("CALLMEBOT_USERS", "")
     return [x.strip() for x in raw.replace(";", ",").split(",") if x.strip()]
 
